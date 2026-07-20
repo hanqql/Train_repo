@@ -49,6 +49,9 @@ resource "aws_lb_listener" "front_http" {
 }
 
 # HTTPS 리스너 - prod만 생성
+# origin_verify_secret이 설정되면 기본은 차단(403)하고, 커스텀 헤더가 일치하는
+# 요청만 아래 리스너 규칙에서 통과시킴 (prefix list는 "CloudFront에서 왔는지"만
+# 확인하므로, 이 헤더로 "내 CloudFront 배포가 보낸 게 맞는지"까지 추가 검증)
 resource "aws_lb_listener" "front_https" {
   count             = var.environment == "prod" ? 1 : 0
   load_balancer_arn = aws_lb.main.arn
@@ -57,9 +60,42 @@ resource "aws_lb_listener" "front_https" {
   ssl_policy        = "ELBSecurityPolicy-TLS13-1-2-2021-06"
   certificate_arn   = var.acm_alb_certificate_arn
 
-  default_action {
+  dynamic "default_action" {
+    for_each = var.origin_verify_secret != "" ? [1] : []
+    content {
+      type = "fixed-response"
+      fixed_response {
+        content_type = "text/plain"
+        message_body = "Forbidden"
+        status_code  = "403"
+      }
+    }
+  }
+
+  dynamic "default_action" {
+    for_each = var.origin_verify_secret == "" ? [1] : []
+    content {
+      type             = "forward"
+      target_group_arn = aws_lb_target_group.app_tg.arn
+    }
+  }
+}
+
+resource "aws_lb_listener_rule" "verified_origin" {
+  count        = var.environment == "prod" && var.origin_verify_secret != "" ? 1 : 0
+  listener_arn = aws_lb_listener.front_https[0].arn
+  priority     = 1
+
+  action {
     type             = "forward"
     target_group_arn = aws_lb_target_group.app_tg.arn
+  }
+
+  condition {
+    http_header {
+      http_header_name = "X-Origin-Verify"
+      values           = [var.origin_verify_secret]
+    }
   }
 }
 

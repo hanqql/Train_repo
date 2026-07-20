@@ -30,11 +30,14 @@ module "eks-cluster" {
   cluster_enabled_log_types = ["api", "audit", "authenticator", "controllerManager", "scheduler"]
 
   # Access Entry 설정
+  # 계정 root ARN 통짜 부여(모든 IAM 주체에게 admin) 대신, eks_admin_principal_arns로 지정한
+  # 특정 IAM Role/User에게만 admin 권한 부여 (enable_cluster_creator_admin_permissions가
+  # terraform apply 실행자 본인에게는 이미 admin을 부여하므로 이 목록은 나머지 팀원용)
   access_entries = merge(
     {
-      admin_access = {
+      for idx, arn in var.eks_admin_principal_arns : "admin_${idx}" => {
         kubernetes_groups = []
-        principal_arn     = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:root"
+        principal_arn     = arn
 
         policy_associations = {
           admin_policy = {

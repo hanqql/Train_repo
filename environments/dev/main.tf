@@ -4,6 +4,8 @@ module "networking" {
   environment      = var.environment
   eks_cluster_name = "${var.project_name}-${var.environment}-eks"
 
+  security_alert_email = var.security_alert_email
+
   providers = {
     aws.us_east_1 = aws.us_east_1
   }
@@ -31,6 +33,8 @@ module "eks-cluster" {
   acm_alb_certificate_arn = module.networking.acm_alb_certificate_arn
   ops_logs_bucket_id      = module.logging.ops_logs_bucket_id
   eks_bastion_role_arn    = module.networking.eks_bastion_role_arn
+
+  eks_admin_principal_arns = var.eks_admin_principal_arns
 }
 
 module "cognito" {
@@ -59,7 +63,7 @@ module "database" {
   azure_db_user     = var.azure_db_user
   azure_db_password = var.azure_db_password
 
-  redis_auth_token  = var.redis_auth_token
+  redis_auth_token = var.redis_auth_token
 }
 
 module "frontend-pipeline" {

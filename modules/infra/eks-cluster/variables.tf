@@ -67,3 +67,22 @@ variable "enable_bastion_access" {
   type        = bool
   default     = true
 }
+
+variable "eks_admin_principal_arns" {
+  description = "EKS 클러스터 admin 권한을 부여할 IAM Role/User ARN 목록 (계정 root 통짜 부여 대신 팀원별 특정 ARN만)"
+  type        = list(string)
+  default     = []
+}
+
+variable "origin_verify_secret" {
+  description = "CloudFront -> ALB 오리진 검증용 커스텀 헤더 시크릿 (비어있으면 기존처럼 그냥 forward)"
+  type        = string
+  sensitive   = true
+  default     = ""
+}
+
+variable "enable_alb_waf" {
+  description = "ALB 앞단에 Regional WAF를 붙일지 여부 (비용 발생, 기본은 켜짐)"
+  type        = bool
+  default     = true
+}

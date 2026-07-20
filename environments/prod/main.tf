@@ -31,6 +31,8 @@ module "networking" {
   # azure-prod apply 후 얻어지는 VPN Gateway IP 자동 할당
   azure_vpn_gateway_ip = try(data.terraform_remote_state.azure_prod.outputs.vpn_gateway_public_ip, "")
 
+  security_alert_email = var.security_alert_email
+
   providers = {
     aws.us_east_1 = aws.us_east_1
   }
@@ -65,6 +67,9 @@ module "eks-cluster" {
   ops_logs_bucket_id      = module.logging.ops_logs_bucket_id
   eks_bastion_role_arn    = module.networking.eks_bastion_role_arn
   eks_bastion_sg_id       = module.networking.eks_bastion_sg_id
+
+  eks_admin_principal_arns = var.eks_admin_principal_arns
+  origin_verify_secret     = random_password.origin_verify_secret.result
 }
 
 module "cognito" {
@@ -190,10 +195,17 @@ module "cdn" {
   waf_arn                                 = module.networking.waf_arn
   acm_certificate_arn                     = module.networking.acm_certificate_arn
   ops_logs_bucket_domain_name             = module.logging.ops_logs_bucket_domain_name
+  origin_verify_secret                    = random_password.origin_verify_secret.result
 
   providers = {
     aws.us_east_1 = aws.us_east_1
   }
+}
+
+# CloudFront -> ALB 오리진 검증용 시크릿 헤더 값 (매 apply마다 안 바뀌게 고정, 수동 rotate 원하면 taint)
+resource "random_password" "origin_verify_secret" {
+  length  = 32
+  special = false
 }
 
 moved {
@@ -245,8 +257,80 @@ resource "aws_route53_record" "www" {
   }
 }
 
-# 3. API 서브도메인 (api.team-train.cloud) -> 콘솔에서 Route53 Failover 레코드로 수동 관리
-# PRIMARY: ALB DNS (Health Check 연결), SECONDARY: Azure App Service URL
+# 3. API 서브도메인 (api.team-train.cloud) -> Route53 Failover
+# PRIMARY: ALB, SECONDARY: Azure App Service
+#
+# ALB SG가 CloudFront prefix list로만 열려있어서, Route53 헬스체커 IP가 ALB에
+# 직접 HTTP 프로브를 못 날림 (SG에서 차단됨) -> 그래서 HTTP 방식 헬스체크 대신
+# ALB Target Group의 HealthyHostCount를 CloudWatch 알람으로 보고, Route53은 그
+# "알람 상태"만 조회하는 CLOUDWATCH_METRIC 타입 헬스체크를 사용 (네트워크 트래픽 없이
+# AWS 제어 영역 API로만 상태를 가져오므로 SG 룰과 무관하게 동작함)
+resource "aws_cloudwatch_metric_alarm" "alb_healthy_hosts" {
+  alarm_name          = "${var.project_name}-${var.environment}-alb-healthy-hosts"
+  comparison_operator = "LessThanThreshold"
+  evaluation_periods  = 2
+  metric_name         = "HealthyHostCount"
+  namespace           = "AWS/ApplicationELB"
+  period              = 60
+  statistic           = "Minimum"
+  threshold           = 1
+  alarm_description   = "ALB 타겟그룹에 healthy한 타겟이 없음 - Route53 Failover가 Azure App Service로 전환됨"
+  treat_missing_data  = "breaching"
+
+  dimensions = {
+    LoadBalancer = module.eks-cluster.alb_arn_suffix
+    TargetGroup  = module.eks-cluster.app_tg_arn_suffix
+  }
+
+  tags = {
+    Name        = "${var.project_name}-alb-healthy-hosts"
+    Environment = var.environment
+  }
+}
+
+resource "aws_route53_health_check" "api_primary" {
+  type                            = "CLOUDWATCH_METRIC"
+  cloudwatch_alarm_name           = aws_cloudwatch_metric_alarm.alb_healthy_hosts.alarm_name
+  cloudwatch_alarm_region         = var.aws_region
+  insufficient_data_health_status = "Unhealthy"
+
+  tags = {
+    Name        = "${var.project_name}-api-primary-healthcheck"
+    Environment = var.environment
+  }
+}
+
+resource "aws_route53_record" "api_primary" {
+  zone_id = data.aws_route53_zone.primary.zone_id
+  name    = "api.team-train.cloud"
+  # Secondary(CNAME)와 Failover 그룹으로 묶이려면 Type이 같아야 하므로 alias(A) 대신 CNAME 사용
+  type           = "CNAME"
+  ttl            = 60
+  set_identifier = "primary"
+
+  failover_routing_policy {
+    type = "PRIMARY"
+  }
+
+  health_check_id = aws_route53_health_check.api_primary.id
+  records         = [module.eks-cluster.alb_dns_name]
+}
+
+# Azure App Service 준비 전(빈 값)에는 Secondary 레코드 자체를 생성하지 않음
+resource "aws_route53_record" "api_secondary" {
+  count          = var.azure_app_service_hostname != "" ? 1 : 0
+  zone_id        = data.aws_route53_zone.primary.zone_id
+  name           = "api.team-train.cloud"
+  type           = "CNAME"
+  ttl            = 60
+  set_identifier = "secondary"
+
+  failover_routing_policy {
+    type = "SECONDARY"
+  }
+
+  records = [var.azure_app_service_hostname]
+}
 
 
 # 4. DB 서브도메인 (db.team-train.cloud) -> Aurora MySQL Endpoint CNAME

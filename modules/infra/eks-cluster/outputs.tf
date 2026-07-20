@@ -38,6 +38,17 @@ output "app_tg_arn" {
   value       = aws_lb_target_group.app_tg.arn
 }
 
+# CloudWatch HealthyHostCount 알람 dimension용 (Route53 Failover 헬스체크에 사용)
+output "alb_arn_suffix" {
+  description = "ALB ARN suffix for CloudWatch dimensions"
+  value       = aws_lb.main.arn_suffix
+}
+
+output "app_tg_arn_suffix" {
+  description = "Target Group ARN suffix for CloudWatch dimensions"
+  value       = aws_lb_target_group.app_tg.arn_suffix
+}
+
 output "cluster_autoscaler_policy_arn" {
   description = "IAM Policy ARN for Cluster Autoscaler"
   value       = aws_iam_policy.eks_cluster_autoscaler.arn

@@ -65,6 +65,12 @@ variable "log_retention_days" {
 # ==================
 # CloudTrail 관련 변수
 # ==================
+variable "security_alert_email" {
+  description = "루트계정 사용/IAM 변경/보안그룹 변경/CloudTrail 조작 알람을 받을 이메일 (비어있으면 구독 생성 안 함)"
+  type        = string
+  default     = ""
+}
+
 variable "cloudtrail_retention_days" {
   description = "Retention period for CloudTrail logs in days"
   type        = number

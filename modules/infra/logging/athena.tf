@@ -45,69 +45,139 @@ resource "aws_athena_workgroup" "logs_workgroup" {
   force_destroy = true
 }
 
-# 4. Glue 크롤러 전용 IAM 역할 및 정책
-resource "aws_iam_role" "glue_crawler_role" {
-  count = var.create_s3_buckets ? 1 : 0
-  name  = "${var.project_name}-${var.environment}-glue-crawler-role"
-
-  assume_role_policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [
-      {
-        Action = "sts:AssumeRole"
-        Effect = "Allow"
-        Principal = {
-          Service = "glue.amazonaws.com"
-        }
-      }
-    ]
-  })
-}
-
-# AWS 기본 제공 Glue 서비스 정책 부착
-resource "aws_iam_role_policy_attachment" "glue_service" {
-  count      = var.create_s3_buckets ? 1 : 0
-  role       = aws_iam_role.glue_crawler_role[0].name
-  policy_arn = "arn:aws:iam::aws:policy/service-role/AWSGlueServiceRole"
-}
-
-# Glue 크롤러가 CloudTrail S3 버킷을 읽을 수 있도록 정책 추가
-resource "aws_iam_role_policy" "glue_cloudtrail_s3_read" {
+# =========================================================================
+# 4. CloudTrail 로그 Athena 테이블 (Glue Crawler 없이 파티션 프로젝션으로 관리)
+#
+# CloudTrail 로그는 스키마가 고정돼있어서 크롤러로 "추론"할 필요가 없음.
+# 크롤러 대신 CloudTrail 콘솔의 "Create Athena table" 기능과 동일한 방식으로
+# 컬럼을 직접 정의하고, 파티션은 projection으로 자동 계산되게 해서
+# MSCK REPAIR TABLE / 크롤러 스케줄 실행 없이도 항상 최신 파티션이 조회됨
+# =========================================================================
+data "aws_caller_identity" "current" {
   count = var.create_s3_buckets && var.cloudtrail_bucket_name != "" ? 1 : 0
-  name  = "GlueCloudTrailS3ReadPolicy"
-  role  = aws_iam_role.glue_crawler_role[0].id
-
-  policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [{
-      Action   = ["s3:GetObject", "s3:ListBucket"]
-      Effect   = "Allow"
-      Resource = [
-        "arn:aws:s3:::${var.cloudtrail_bucket_name}",
-        "arn:aws:s3:::${var.cloudtrail_bucket_name}/*"
-      ]
-    }]
-  })
 }
 
-# 5. CloudTrail 로그 Glue 크롤러 (API 호출 이력 Athena 쿼리용)
-resource "aws_glue_crawler" "cloudtrail_logs_crawler" {
+resource "aws_glue_catalog_table" "cloudtrail_logs" {
   count         = var.create_s3_buckets && var.cloudtrail_bucket_name != "" ? 1 : 0
-  name          = "${var.project_name}-${var.environment}-cloudtrail-crawler"
-  role          = aws_iam_role.glue_crawler_role[0].arn
+  name          = "cloudtrail_logs"
   database_name = aws_athena_database.logs_db[0].name
+  table_type    = "EXTERNAL_TABLE"
 
-  s3_target {
-    path = "s3://${var.cloudtrail_bucket_name}/AWSLogs/"
+  parameters = {
+    "classification"                = "cloudtrail"
+    "projection.enabled"            = "true"
+    "projection.region.type"        = "enum"
+    "projection.region.values"      = "ap-northeast-2,us-east-1"
+    "projection.date.type"          = "date"
+    "projection.date.range"         = "2024/01/01,NOW"
+    "projection.date.format"        = "yyyy/MM/dd"
+    "projection.date.interval"      = "1"
+    "projection.date.interval.unit" = "DAYS"
+    "storage.location.template"     = "s3://${var.cloudtrail_bucket_name}/AWSLogs/${data.aws_caller_identity.current[0].account_id}/CloudTrail/$${region}/$${date}"
   }
 
-  schema_change_policy {
-    delete_behavior = "LOG"
-    update_behavior = "UPDATE_IN_DATABASE"
+  partition_keys {
+    name = "region"
+    type = "string"
+  }
+  partition_keys {
+    name = "date"
+    type = "string"
   }
 
-  tags = {
-    Name        = "cloudtrail-logs-crawler"
-    Environment = var.environment
+  storage_descriptor {
+    location      = "s3://${var.cloudtrail_bucket_name}/AWSLogs/${data.aws_caller_identity.current[0].account_id}/CloudTrail/"
+    input_format  = "com.amazon.emr.cloudtrail.CloudTrailInputFormat"
+    output_format = "org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat"
+
+    ser_de_info {
+      name                  = "cloudtrail-serde"
+      serialization_library = "com.amazon.emr.hive.serde.CloudTrailSerde"
+    }
+
+    columns {
+      name = "eventversion"
+      type = "string"
+    }
+    columns {
+      name = "useridentity"
+      type = "struct<type:string,principalid:string,arn:string,accountid:string,invokedby:string,accesskeyid:string,username:string,sessioncontext:struct<attributes:struct<mfaauthenticated:string,creationdate:string>,sessionissuer:struct<type:string,principalid:string,arn:string,accountid:string,username:string>>>"
+    }
+    columns {
+      name = "eventtime"
+      type = "string"
+    }
+    columns {
+      name = "eventsource"
+      type = "string"
+    }
+    columns {
+      name = "eventname"
+      type = "string"
+    }
+    columns {
+      name = "awsregion"
+      type = "string"
+    }
+    columns {
+      name = "sourceipaddress"
+      type = "string"
+    }
+    columns {
+      name = "useragent"
+      type = "string"
+    }
+    columns {
+      name = "errorcode"
+      type = "string"
+    }
+    columns {
+      name = "errormessage"
+      type = "string"
+    }
+    columns {
+      name = "requestparameters"
+      type = "string"
+    }
+    columns {
+      name = "responseelements"
+      type = "string"
+    }
+    columns {
+      name = "additionaleventdata"
+      type = "string"
+    }
+    columns {
+      name = "requestid"
+      type = "string"
+    }
+    columns {
+      name = "eventid"
+      type = "string"
+    }
+    columns {
+      name = "resources"
+      type = "array<struct<arn:string,accountid:string,type:string>>"
+    }
+    columns {
+      name = "eventtype"
+      type = "string"
+    }
+    columns {
+      name = "apiversion"
+      type = "string"
+    }
+    columns {
+      name = "readonly"
+      type = "string"
+    }
+    columns {
+      name = "recipientaccountid"
+      type = "string"
+    }
+    columns {
+      name = "vpcendpointid"
+      type = "string"
+    }
   }
 }

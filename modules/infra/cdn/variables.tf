@@ -28,6 +28,13 @@ variable "alb_dns_name" {
   type        = string
 }
 
+variable "origin_verify_secret" {
+  description = "CloudFront -> ALB 오리진 검증용 커스텀 헤더 시크릿 (비어있으면 헤더 자체를 안 붙임)"
+  type        = string
+  sensitive   = true
+  default     = ""
+}
+
 variable "acm_certificate_arn" {
   description = "ACM Certificate ARN for CloudFront (only used in prod)"
   type        = string

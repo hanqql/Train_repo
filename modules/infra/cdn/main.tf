@@ -51,6 +51,16 @@ resource "aws_cloudfront_distribution" "main" {
         origin_protocol_policy = var.environment == "prod" ? "https-only" : "http-only"
         origin_ssl_protocols   = ["TLSv1.2"]
       }
+
+      # ALB SG(prefix list)는 "CloudFront에서 왔는지"만 확인하므로, 이 커스텀 헤더로
+      # "내 CloudFront 배포가 보낸 게 맞는지"까지 ALB 리스너 규칙에서 추가 검증함
+      dynamic "custom_header" {
+        for_each = var.origin_verify_secret != "" ? [1] : []
+        content {
+          name  = "X-Origin-Verify"
+          value = var.origin_verify_secret
+        }
+      }
     }
   }
 

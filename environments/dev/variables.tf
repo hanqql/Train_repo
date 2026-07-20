@@ -75,3 +75,15 @@ variable "verified_email_or_domain" {
   type        = string
   default     = "hajin0533@gmail.com"
 }
+
+variable "eks_admin_principal_arns" {
+  description = "EKS 클러스터 admin 권한을 부여할 IAM Role/User ARN 목록 (계정 root 통짜 부여 금지)"
+  type        = list(string)
+  default     = []
+}
+
+variable "security_alert_email" {
+  description = "루트계정 사용/IAM 변경/보안그룹 변경/CloudTrail 조작 알람을 받을 이메일"
+  type        = string
+  default     = ""
+}

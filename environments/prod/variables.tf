@@ -84,3 +84,27 @@ variable "domain_name" {
   description = "SES 이메일 발송에 사용할 도메인"
 }
 
+# ==================
+# EKS admin 권한
+# ==================
+variable "eks_admin_principal_arns" {
+  description = "EKS 클러스터 admin 권한을 부여할 IAM Role/User ARN 목록 (계정 root 통짜 부여 금지)"
+  type        = list(string)
+  default     = []
+}
+
+variable "security_alert_email" {
+  description = "루트계정 사용/IAM 변경/보안그룹 변경/CloudTrail 조작 알람을 받을 이메일"
+  type        = string
+  default     = ""
+}
+
+# ==================
+# Route53 API Failover
+# ==================
+variable "azure_app_service_hostname" {
+  description = "azure-app-service 모듈(별도 azure-prod 스택)의 app_service_default_hostname output 값 - Secondary Failover 대상"
+  type        = string
+  default     = ""
+}
+
