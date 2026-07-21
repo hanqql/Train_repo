@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>침입자가 들어오면 제일 먼저 뭘 지울까 — CloudTrail 실시간 탐지 설계</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%9B%A1%EF%B8%8F%3C/text%3E%3C/svg%3E">
+<style>
+  :root {
+    --bg: #eef1f0; --panel: #ffffff; --panel-2: #e4e9e8;
+    --ink: #121820; --ink-soft: #4a5561; --ink-faint: #7c8790;
+    --line: #c7d0d1; --accent: #a8671f; --accent-tint: #f2e2c8;
+    --band-bg: #0e141b; --band-ink: #eef1f0; --band-ink-soft: #9aa7b0; --band-line: #2a3542;
+    --serif: 'Iowan Old Style', 'Palatino Linotype', 'Book Antiqua', Georgia, 'Times New Roman', serif;
+    --mono: 'SF Mono', 'JetBrains Mono', 'Fira Code', Consolas, 'Courier New', monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0e141b; --panel: #171f29; --panel-2: #1d2733;
+      --ink: #eef1f0; --ink-soft: #9aa7b0; --ink-faint: #6b7580;
+      --line: #2a3542; --accent: #d9a24e; --accent-tint: #2b2213;
+      --band-bg: #05080c; --band-ink: #eef1f0; --band-ink-soft: #8b97a1; --band-line: #1c2530;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--ink);
+    font-family: var(--serif); font-size: 17px; line-height: 1.75;
+    -webkit-font-smoothing: antialiased;
+  }
+  a { color: var(--accent); text-decoration-thickness: 1px; text-underline-offset: 3px; }
+  .wrap { max-width: 700px; margin: 0 auto; padding: 0 28px; }
+  .band { background: var(--band-bg); color: var(--band-ink); padding: 48px 0 36px; border-bottom: 1px solid var(--band-line); }
+  .back { font-family: var(--mono); font-size: 12.5px; color: var(--accent); text-decoration: none; }
+  .eyebrow { font-family: var(--mono); font-size: 12px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--accent); margin: 18px 0 14px; }
+  h1 { font-family: var(--serif); font-weight: 600; font-size: clamp(24px, 4vw, 34px); line-height: 1.3; margin: 0; text-wrap: balance; color: var(--band-ink); }
+  main { padding: 44px 0 64px; }
+  h2 { font-family: var(--serif); font-weight: 600; font-size: 21px; margin: 40px 0 12px; }
+  h2:first-child { margin-top: 0; }
+  p { margin: 0 0 16px; max-width: 68ch; }
+  ol, ul { max-width: 66ch; padding-left: 1.3em; margin: 0 0 16px; }
+  li { margin-bottom: 8px; }
+  code, .mono { font-family: var(--mono); font-size: 0.87em; }
+  code { background: var(--panel-2); border: 1px solid var(--line); border-radius: 3px; padding: 0.1em 0.4em; }
+  strong { color: var(--ink); }
+  hr { border: none; border-top: 1px solid var(--line); margin: 40px 0; }
+  .foot-band { background: var(--band-bg); color: var(--band-ink-soft); border-top: 1px solid var(--band-line); padding: 32px 0 40px; margin-top: 20px; }
+  .foot-band a { color: var(--accent); }
+</style>
+</head>
+<body>
+
+<div class="band">
+  <div class="wrap">
+    <a class="back" href="index.html">← 케이스 스터디로</a>
+    <p class="eyebrow">딥다이브 · team-train 인프라</p>
+    <h1>침입자가 들어오면 제일 먼저 뭘 지울까 — CloudTrail 실시간 탐지 설계</h1>
+  </div>
+</div>
+
+<main>
+  <div class="wrap">
+
+    <h2>로그는 쌓아뒀는데, 그걸 누가 보고 있나</h2>
+    <p>CloudTrail을 켜는 것 자체는 어렵지 않다. 전 리전 트레일 하나 만들고 S3에 던져두면 끝이다. 근데 그렇게만 해두면 딱 하나만 할 수 있다 — <strong>사고가 다 끝난 뒤에 로그를 뒤져서 무슨 일이 있었는지 재구성하는 것</strong>. 공격이 지금 진행 중인데 그걸 실시간으로 알아채는 용도로는 못 쓴다. S3에 쌓인 로그는 누가 열어보기 전까지는 그냥 파일이다.</p>
+    <p>그래서 이 프로젝트에서는 CloudTrail을 두 갈래로 나눠서 설계했다. S3(+Athena)는 "사고 후 조사용", CloudWatch Logs는 "지금 이 순간 감시용".</p>
+
+    <h2>기본 뼈대</h2>
+    <ul>
+      <li>전 리전(<code>is_multi_region_trail</code>) CloudTrail 하나</li>
+      <li>로그는 KMS로 암호화된 S3 버킷에 저장, 로그 파일 무결성 검증(<code>enable_log_file_validation</code>) 켬</li>
+      <li>여기에 CloudWatch Logs로 이중 전송하는 경로를 하나 더 붙였다 (<code>cloud_watch_logs_group_arn</code>)</li>
+    </ul>
+    <p>이 이중 전송이 핵심이다. S3 쪽은 그대로 두고, 같은 로그를 CloudWatch Logs Metric Filter가 실시간으로 훑도록 만들었다.</p>
+
+    <h2>뭘 감시할지 고르는 기준 — 4개로 줄인 이유</h2>
+    <p>이벤트를 다 감시하면 노이즈만 늘어난다. CIS AWS Foundations Benchmark를 기준으로 삼아서 딱 4개만 골랐다.</p>
+    <ol>
+      <li><strong>루트 계정 사용</strong> — 평소에 루트로 로그인/API 호출할 일이 없다. 있으면 그 자체가 이상 신호다.</li>
+      <li><strong>IAM 정책/권한 변경</strong> — <code>PutRolePolicy</code>, <code>AttachUserPolicy</code> 계열 15개 이벤트를 하나의 필터로 묶었다. 권한 상승은 공격자가 발판을 넓히는 가장 흔한 다음 스텝이다.</li>
+      <li><strong>보안그룹 인/아웃바운드 규칙 변경</strong> — 네트워크 경계가 이 프로젝트에서 제일 신경 쓴 부분이라, 그 경계 자체가 바뀌는 순간을 놓치면 앞의 모든 설계(ALB 오리진 검증 등)가 무의미해진다.</li>
+      <li><strong>CloudTrail 자체 조작</strong> (<code>StopLogging</code>, <code>DeleteTrail</code>, <code>UpdateTrail</code>) — 이게 제일 흥미로웠던 지점이다.</li>
+    </ol>
+
+    <h2>4번이 따로 필요했던 이유</h2>
+    <p>앞의 세 가지는 "공격자가 뭘 하려는지"를 본다. 4번은 다르다 — <strong>공격자가 자기 흔적을 지우려는 순간</strong>을 본다.</p>
+    <p>침해 사고 대응 시나리오를 생각해보면, 계정을 탈취한 공격자 입장에서 제일 먼저 할 만한 일 중 하나가 로깅을 꺼버리는 거다. <code>StopLogging</code> 한 번이면 그 뒤로 무슨 짓을 해도 CloudTrail에 안 남는다. 그러니 이 이벤트만큼은 다른 세 개와 성격이 다르게 취급해야 한다 — 이게 울리면 "권한이 이상하게 바뀌었나 봐야지" 수준이 아니라 "지금 로그 자체를 못 믿을 수도 있다"는 뜻이다.</p>
+    <p>그래서 알람 우선순위를 매길 때도 이 네 번째를 제일 위에 둔다. 나머지 셋은 "뭔가 바뀌었다"는 신호고, 이건 "뒤에 나올 신호를 아예 못 받을 수도 있다"는 신호다.</p>
+
+    <h2>비용 관점의 결정 — 관리 이벤트만 남긴다</h2>
+    <p><code>event_selector</code>에서 <code>include_management_events = true</code>만 켜고 데이터 이벤트(S3 객체 단위 접근, Lambda 호출 등)는 뺐다. 데이터 이벤트는 트래픽량 자체가 관리 이벤트와 자릿수가 다르게 많아서, 다 켜면 비용이 순식간에 불어난다. 이 프로젝트에서 탐지하려는 대상 — 루트 사용, 권한 변경, SG 변경, 트레일 조작 — 은 전부 관리 이벤트 영역이라 데이터 이벤트를 꺼도 탐지 커버리지에 구멍이 안 생긴다. "다 켜두면 안전하지 않을까"가 아니라 "무엇을 놓치면 안 되는지"를 먼저 정하고 나머지를 껐다.</p>
+
+    <h2>사후 조회 쪽도 손봤다 — Glue Crawler를 없앤 이유</h2>
+    <p>실시간 탐지 말고 사후 조사(포렌식) 경로도 있다. 보통 CloudTrail 로그를 Athena로 조회하려면 Glue Crawler를 붙여서 스키마를 추론하고 파티션을 등록한다. 근데 CloudTrail 로그는 스키마가 고정돼 있다 — AWS 콘솔의 "Create Athena table" 기능도 크롤러 없이 컬럼을 직접 정의한다. 추론할 게 없는 데이터에 크롤러를 붙이는 건 그냥 스케줄 실행 비용과 지연만 추가하는 일이었다.</p>
+    <p>그래서 <code>aws_glue_catalog_table</code>에 컬럼을 직접 정의하고, 파티션은 <code>projection.enabled = true</code>로 자동 계산되게 했다. <code>region</code>과 <code>date</code>를 projection 값으로 주면, 크롤러 스케줄이나 <code>MSCK REPAIR TABLE</code> 없이도 쿼리 시점에 최신 파티션이 바로 잡힌다. 크롤러가 도는 걸 기다릴 필요 없이 로그가 S3에 쓰이자마자 조회 가능하다.</p>
+
+    <h2>트레이드오프</h2>
+    <ul>
+      <li>Metric Filter의 <code>evaluation_periods = 1</code>, <code>period = 300</code> 이라 최악의 경우 탐지까지 5분 걸릴 수 있다. 실시간이라고 부르지만 초 단위 실시간은 아니다 — 이 프로젝트 규모에서는 분 단위 지연이 감수 가능하다고 판단했다.</li>
+      <li>알람 액션은 SNS 이메일 하나다. 실제 운영 환경이라면 PagerDuty나 Slack 웹훅으로 온콜 체계에 태워야겠지만, 포트폴리오 스코프에서는 이메일 구독으로 동작 확인까지만 검증했다.</li>
+      <li>CIS 벤치마크 기준 4개 항목만 감시한다. 실제 상용 환경에서는 GuardDuty 같은 관리형 위협 탐지를 같이 두는 게 정석이고, 이 Metric Filter들은 그걸 대체하는 게 아니라 "우리가 놓치면 안 된다고 판단한 몇 가지"를 직접 짚어둔 것에 가깝다.</li>
+    </ul>
+
+    <h2>마무리</h2>
+    <p>이 설계에서 남는 생각은 하나다 — 탐지 항목을 고를 때 "무슨 일이 일어났는가"만큼 "그 일이 일어난 뒤에 로그를 계속 믿을 수 있는가"도 같이 물어야 한다는 것. CloudTrail 자체를 노리는 이벤트를 따로 떼어 제일 위에 둔 것도 그 질문 때문이었다.</p>
+
+  </div>
+</main>
+
+<div class="foot-band">
+  <div class="wrap">
+    <a href="index.html">← team-train 케이스 스터디로 돌아가기</a>
+  </div>
+</div>
+
+</body>
+</html>
