@@ -1,0 +1,493 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>인터넷에서 DB까지 — team-train 인프라의 모든 경계 설계</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%9B%A1%EF%B8%8F%3C/text%3E%3C/svg%3E">
+<style>
+  :root {
+    --bg: #eef1f0;
+    --panel: #ffffff;
+    --panel-2: #e4e9e8;
+    --ink: #121820;
+    --ink-soft: #4a5561;
+    --ink-faint: #7c8790;
+    --line: #c7d0d1;
+    --accent: #a8671f;
+    --accent-ink: #ffffff;
+    --accent-tint: #f2e2c8;
+    --good: #3f7a54;
+    --bad: #a8402f;
+    --band-bg: #0e141b;
+    --band-ink: #eef1f0;
+    --band-ink-soft: #9aa7b0;
+    --band-line: #2a3542;
+    --serif: 'Iowan Old Style', 'Palatino Linotype', 'Book Antiqua', Georgia, 'Times New Roman', serif;
+    --mono: 'SF Mono', 'JetBrains Mono', 'Fira Code', Consolas, 'Courier New', monospace;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0e141b; --panel: #171f29; --panel-2: #1d2733;
+      --ink: #eef1f0; --ink-soft: #9aa7b0; --ink-faint: #6b7580;
+      --line: #2a3542; --accent: #d9a24e; --accent-ink: #1a1206; --accent-tint: #2b2213;
+      --good: #6fbf8b; --bad: #e08a76;
+      --band-bg: #05080c; --band-ink: #eef1f0; --band-ink-soft: #8b97a1; --band-line: #1c2530;
+    }
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--ink);
+    font-family: var(--serif); font-size: 17px; line-height: 1.68;
+    -webkit-font-smoothing: antialiased;
+  }
+  a { color: var(--accent); text-decoration-thickness: 1px; text-underline-offset: 3px; }
+  a:focus-visible, button:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+
+  .wrap { max-width: 780px; margin: 0 auto; padding: 0 28px; }
+
+  /* cover band */
+  .band { background: var(--band-bg); color: var(--band-ink); padding: 60px 0 40px; border-bottom: 1px solid var(--band-line); }
+  .eyebrow {
+    font-family: var(--mono); font-size: 12.5px; letter-spacing: 0.12em; text-transform: uppercase;
+    color: var(--accent); margin: 0 0 18px;
+  }
+  h1 {
+    font-family: var(--serif); font-weight: 600; font-size: clamp(27px, 4.2vw, 40px);
+    line-height: 1.24; letter-spacing: -0.01em; margin: 0 0 16px; text-wrap: balance; color: var(--band-ink);
+  }
+  .thesis { font-size: 17.5px; color: var(--band-ink-soft); max-width: 62ch; margin: 0 0 28px; }
+  .stat-strip {
+    display: flex; flex-wrap: wrap; gap: 22px 32px; padding: 18px 0 4px;
+    border-top: 1px solid var(--band-line);
+  }
+  .stat b {
+    display: block; font-family: var(--mono); font-variant-numeric: tabular-nums;
+    font-size: 24px; color: var(--accent); line-height: 1.1; margin-bottom: 4px;
+  }
+  .stat span { font-size: 12.5px; color: var(--band-ink-soft); }
+
+  main { padding: 52px 0 0; }
+  section { padding: 0 0 52px; }
+  section + section { border-top: 1px solid var(--line); padding-top: 44px; }
+
+  .kicker {
+    font-family: var(--mono); font-size: 12px; letter-spacing: 0.1em; text-transform: uppercase;
+    color: var(--ink-faint); margin: 0 0 10px;
+  }
+  h2 { font-family: var(--serif); font-weight: 600; font-size: clamp(21px, 2.8vw, 26px); line-height: 1.3; margin: 0 0 14px; text-wrap: balance; }
+  h3 { font-family: var(--serif); font-weight: 600; font-size: 17.5px; margin: 26px 0 8px; }
+  h3:first-child { margin-top: 0; }
+  p { margin: 0 0 15px; max-width: 68ch; }
+  p.lead { font-size: 18px; color: var(--ink-soft); }
+  ul.plain { margin: 0 0 15px; padding-left: 1.1em; max-width: 66ch; }
+  ul.plain li { margin-bottom: 6px; }
+
+  code, .mono { font-family: var(--mono); font-size: 0.88em; }
+  code { background: var(--panel-2); border: 1px solid var(--line); border-radius: 3px; padding: 0.1em 0.4em; }
+
+  .files { font-family: var(--mono); font-size: 12.5px; color: var(--ink-faint); line-height: 1.9; margin-top: 4px; }
+  .files span { display: inline-block; background: var(--panel-2); border: 1px solid var(--line); border-radius: 3px; padding: 2px 7px; margin: 0 6px 6px 0; }
+
+  .diagram-panel { background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 20px; overflow-x: auto; }
+  .diagram-panel .mermaid { display: flex; justify-content: center; }
+  .diagram-caption { font-family: var(--mono); font-size: 12px; color: var(--ink-faint); margin: 12px 0 0; line-height: 1.6; }
+
+  .table-scroll { overflow-x: auto; border: 1px solid var(--line); border-radius: 6px; margin-top: 18px; }
+  table { width: 100%; border-collapse: collapse; min-width: 640px; background: var(--panel); }
+  th, td { text-align: left; padding: 13px 16px; vertical-align: top; font-size: 15px; }
+  thead th {
+    font-family: var(--mono); font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase;
+    color: var(--ink-faint); border-bottom: 1px solid var(--line); font-weight: 600;
+  }
+  tbody tr + tr td { border-top: 1px solid var(--line); }
+  td.verdict-reject { color: var(--bad); }
+  td.verdict-accept { color: var(--good); font-weight: 600; }
+  .verdict-mark { font-family: var(--mono); font-size: 11.5px; letter-spacing: 0.04em; }
+
+  .domain-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin-top: 4px; }
+  .domain-tile {
+    border: 1px solid var(--line); border-radius: 6px; padding: 14px 16px; background: var(--panel);
+  }
+  .domain-tile .n { font-family: var(--mono); font-size: 20px; color: var(--accent); font-variant-numeric: tabular-nums; }
+  .domain-tile .t { font-size: 13.5px; color: var(--ink-soft); margin-top: 2px; }
+
+  .status-row { display: flex; align-items: baseline; gap: 12px; padding: 12px 0; }
+  .status-row + .status-row { border-top: 1px solid var(--line); }
+  .status-dot { font-family: var(--mono); font-size: 12px; letter-spacing: 0.03em; border-radius: 3px; padding: 3px 8px; flex: none; }
+  .status-dot.done { background: var(--accent-tint); color: var(--good); }
+  .status-dot.pending { background: var(--panel-2); color: var(--ink-faint); }
+  .status-label { font-size: 15.5px; }
+  .status-note { font-size: 13px; color: var(--ink-faint); margin-left: auto; text-align: right; }
+
+  .foot-band { background: var(--band-bg); color: var(--band-ink-soft); border-top: 1px solid var(--band-line); padding: 44px 0 48px; margin-top: 8px; }
+  .foot-band h2 { color: var(--band-ink); }
+  .evidence dl { display: grid; grid-template-columns: max-content 1fr; gap: 10px 20px; margin: 0; font-size: 14.5px; }
+  .evidence dt { font-family: var(--mono); font-size: 12px; letter-spacing: 0.04em; text-transform: uppercase; color: var(--band-ink-soft); white-space: nowrap; padding-top: 2px; }
+  .evidence dd { margin: 0; }
+  .evidence a { color: var(--accent); }
+  .foot-note { font-size: 13.5px; margin-top: 26px; color: var(--band-ink-soft); }
+
+  @media (max-width: 640px) {
+    .band { padding: 40px 0 32px; }
+    main { padding: 36px 0 0; }
+    .status-row { flex-wrap: wrap; }
+    .status-note { margin-left: 0; text-align: left; }
+  }
+</style>
+</head>
+<body>
+
+<div class="band">
+  <div class="wrap">
+    <p class="eyebrow">케이스 스터디 · team-train 인프라</p>
+    <h1>인터넷에서 DB까지, 예약 서비스의 모든 경계를 설계하다</h1>
+    <p class="thesis">
+      4인 팀 프로젝트에서 네트워크·보안을 전담했다. VPC/보안그룹 경계 설계부터
+      자격증명 관리, 실시간 감사 로그, AWS-Azure 멀티클라우드 DR까지 직접 설계하고
+      운영까지 확인했다.
+    </p>
+    <div class="stat-strip">
+      <div class="stat"><b>27</b><span>커밋 (git log --author 기준)</span></div>
+      <div class="stat"><b>74</b><span>수정한 파일</span></div>
+      <div class="stat"><b>modules/networking</b><span>가장 많이 다룬 폴더 · 16개 파일</span></div>
+      <div class="stat"><b>AWS ↔ Azure</b><span>S2S VPN 멀티클라우드 DR</span></div>
+    </div>
+  </div>
+</div>
+
+<main>
+  <div class="wrap">
+
+    <section class="prose">
+      <p class="kicker">개요</p>
+      <h2>요청이 인터넷에서 들어와 DB에 닿기까지 거치는 모든 경계</h2>
+      <p class="lead">
+        요청 하나가 이 다섯 개 경계를 순서대로 통과한다. 아래는 그 경로 전체를
+        하나의 그림으로 정리한 것이고, 본문은 이 순서대로 이어진다.
+      </p>
+      <div class="diagram-panel">
+        <pre class="mermaid">
+%%{init: {'theme':'base', 'themeVariables': {
+  'primaryColor': '#f2e2c8',
+  'primaryTextColor': '#121820',
+  'primaryBorderColor': '#a8671f',
+  'lineColor': '#7c8790',
+  'secondaryColor': '#e4e9e8',
+  'tertiaryColor': '#ffffff',
+  'clusterBkg': '#e4e9e8',
+  'clusterBorder': '#c7d0d1',
+  'fontFamily': 'SF Mono, Consolas, monospace',
+  'fontSize': '13px'
+}}}%%
+flowchart TB
+  I(["인터넷"]) --> WAF["CloudFront + WAF"]
+  subgraph VPC["VPC 10.0.0.0/16"]
+    WAF -- "X-Origin-Verify 헤더" --> ALB["ALB · Public\nprefix list only"]
+    BASTION["Bastion · Public\nSSM only, No SSH"] -. 운영 접근 .-> AURORA
+    ALB --> EKS["EKS Pods · Private"]
+    EKS --> AURORA["Aurora · DB Subnet"]
+    EKS --> REDIS["Redis · DB Subnet"]
+    DMS["DMS · DB Subnet"]
+  end
+  EKS -. IRSA .-> SM["Secrets Manager"]
+  DMS -- "VPN 터널만 허용\n(0.0.0.0/0 아님)" --> AZURE["Azure VNet\nMySQL DR"]
+  CT["CloudTrail\n(전 리전)"] -. 감사 .-> VPC
+  CT --> ALARM["CloudWatch\n보안 알람"]
+        </pre>
+        <p class="diagram-caption">실선 = 요청/복제 경로 · 점선 = 감사·인증 조회. 아래 5개 경계 모두 이 문서에서 다룬다.</p>
+      </div>
+      <div class="domain-grid">
+        <div class="domain-tile"><div class="n">01</div><div class="t">네트워크 경계</div></div>
+        <div class="domain-tile"><div class="n">02</div><div class="t">엣지 방어 &amp; DNS</div></div>
+        <div class="domain-tile"><div class="n">03</div><div class="t">자격증명 관리</div></div>
+        <div class="domain-tile"><div class="n">04</div><div class="t">감사·탐지</div></div>
+        <div class="domain-tile"><div class="n">05</div><div class="t">멀티클라우드 DR</div></div>
+      </div>
+    </section>
+
+    <section class="prose">
+      <p class="kicker">01 · modules/networking/main.tf, security_group.tf, bastion.tf, kms.tf</p>
+      <h2>네트워크 경계 — VPC와 보안그룹</h2>
+      <p>
+        VPC(<code>10.0.0.0/16</code>)를 Public·Private·DB 3단으로 분리했다. DB 서브넷의
+        라우트 테이블에는 인터넷으로 나가는 경로 자체가 없다 — Aurora/Redis/DMS는
+        구조적으로 인터넷에 직접 노출될 수 없다.
+      </p>
+      <p>
+        보안그룹 5개를 최소 권한으로 체이닝했다: <code>ALB</code>(prod는 CloudFront
+        prefix list만) → <code>EKS</code>(ALB SG에서 오는 트래픽만) → <code>Aurora/Redis
+        SG</code>(EKS·Bastion·DMS SG에서만, 그 외 전부 차단) — Redis 서비스 자체는
+        DB 파트 담당이고, 여기서 다루는 건 그 앞단 경계뿐이다. 여기에 더해 KMS 키도
+        Aurora/S3/Redis 용도별로 분리해 로테이션을 켜뒀다.
+      </p>
+
+      <h3>Bastion — 인바운드 자체가 없는 운영 접점</h3>
+      <p>
+        DB 서브넷은 인터넷 경로가 없으니, 운영자가 Aurora/Redis에 붙으려면 Bastion을
+        거쳐야 한다. 이 Bastion에 SSH 포트(22)는 아예 열지 않았다 — 인바운드 규칙
+        자체가 없고, SSM Session Manager로만 접속한다. IAM Role도
+        <code>AmazonSSMManagedInstanceCore</code> 하나만 붙어있어서, 키 페어 분실이나
+        22번 포트 스캐닝으로 뚫릴 여지 자체를 없앴다.
+      </p>
+
+      <h3>EKS 클러스터 접근 권한</h3>
+      <p>
+        운영 접근을 이렇게 좁힌 김에, 클러스터 관리 권한도 다시 봤다. 원래 EKS
+        Access Entry가 계정 root ARN에 클러스터 admin을 통짜로 부여하고 있었다 —
+        이 계정의 어떤 IAM 주체든 클러스터 전체를 관리할 수 있는 상태였다는 뜻이다.
+        이걸 <code>eks_admin_principal_arns</code> 변수로 바꿔서, 지정한 팀원 IAM
+        ARN만 admin 권한을 갖도록 좁혔다.
+      </p>
+    </section>
+
+    <section class="prose">
+      <p class="kicker">02 · modules/networking/{route53,acm,cloudfront,waf}.tf · modules/infra/{cdn,eks-cluster}/*</p>
+      <h2>엣지 — Route53, CloudFront, ALB, WAF</h2>
+      <p class="lead">
+        엣지에 있는 네 개 컴포넌트를 각각 설계했다. 그중 Route53과 ALB가 서로
+        부딪히는 지점에서 트러블슈팅이 있었는데, 그 과정은 따로 아래에서 다룬다.
+      </p>
+
+      <h3>Route53 / DNS</h3>
+      <p>
+        <code>team-train.cloud</code> 존 기준으로 <code>main</code>/<code>www</code>
+        레코드(CloudFront alias), <code>db</code> 레코드(Aurora CNAME), ACM 인증서
+        DNS 검증 레코드를 관리한다. <code>api.team-train.cloud</code>는 Primary(ALB)
+        /Secondary(Azure App Service) Failover 레코드로 — 콘솔 수동 관리이던 걸
+        이번 세션에 Terraform 리소스로 전환했다.
+      </p>
+      <div class="files"><span>modules/networking/route53.tf</span><span>domain/main.tf</span></div>
+
+      <h3>CloudFront</h3>
+      <p>
+        S3 프론트엔드와 ALB 백엔드를 하나의 배포로 묶고, <code>/api/*</code> 경로만
+        ALB로 라우팅한다. 오리진에 시크릿 커스텀 헤더(<code>X-Origin-Verify</code>)를
+        심어서, ALB 쪽에서 "내 CloudFront 배포가 보낸 게 맞는지"까지 검증할 수 있게
+        했다 (아래 WAF·ALB 항목과 연결됨).
+      </p>
+      <div class="files"><span>modules/networking/cloudfront.tf</span><span>modules/infra/cdn/main.tf</span></div>
+
+      <h3>ALB 접근 제어</h3>
+      <p>
+        보안그룹은 CloudFront managed prefix list로만 인바운드를 연다 — WAF 우회
+        차단이 목적이다. HTTPS 리스너 기본 동작은 403이고, CloudFront가 심어준
+        커스텀 헤더가 일치하는 요청만 리스너 규칙에서 타겟그룹으로 forward된다.
+      </p>
+      <div class="files"><span>modules/networking/security_group.tf</span><span>modules/infra/eks-cluster/alb.tf</span></div>
+
+      <h3>WAF — 2단 방어</h3>
+      <p>
+        CloudFront 앞단(Common/SQLi 관리형 룰 + Rate Limit + IP 차단 리스트)과
+        ALB 앞단(같은 기준의 Regional WAF) 두 군데에 각각 붙였다. CloudFront WAF는
+        CloudFront 경유 트래픽만 보기 때문에, 커스텀 헤더 검증까지 뚫리는 경우를
+        대비해 ALB 쪽에도 별도로 필요했다.
+      </p>
+      <div class="files"><span>modules/networking/waf.tf</span><span>modules/infra/eks-cluster/waf.tf</span></div>
+
+      <h3>트러블슈팅 — Route53 Failover가 계속 실패했다</h3>
+      <p>
+        <b>증상</b> — ALB는 정상인데 Route53 헬스체크가 항상 Failure로 떴다. Primary가
+        멀쩡해도 Route53 입장에서는 죽은 것처럼 보이니 Failover가 오작동했다.
+      </p>
+      <p>
+        <b>원인</b> — ALB는 CloudFront만 봐야 하는데, Route53 Failover는 ALB를 직접
+        봐야 한다는 게 문제였다. Route53이 Primary 생사를 확인하려면 ALB에 실제로
+        요청을 보내야 하는데, Route53 헬스체커의 IP 대역은 CloudFront prefix list에
+        없다. 그래서 헬스체크 트래픽 자체가 SG에서 그대로 막히고 있었다.
+      </p>
+      <p>
+        원인을 파다 보니 두 번째 허점도 나왔다 — prefix list는 "CloudFront에서
+        왔는지"만 확인하지, "내 CloudFront 배포에서 왔는지"는 확인하지 않는다.
+        CloudFront IP 대역은 AWS의 모든 고객이 공유하므로, 제3자가 자기 CloudFront
+        배포의 오리진을 우리 ALB로 등록해도 SG는 그대로 통과시킨다.
+      </p>
+
+      <h3>검토한 해결책</h3>
+      <div class="table-scroll">
+        <table>
+          <thead><tr><th>대안</th><th>여부</th><th>이유</th></tr></thead>
+          <tbody>
+            <tr>
+              <td>ALB SG에 Route53 헬스체커 IP 허용</td>
+              <td class="verdict-reject"><span class="verdict-mark">기각</span></td>
+              <td>AWS가 managed prefix list로 제공 안 함. <code>ip-ranges.json</code>에서
+                직접 뽑아 관리해야 하는데 대역이 주기적으로 바뀌어 자동 갱신
+                파이프라인이 별도로 필요함</td>
+            </tr>
+            <tr>
+              <td>Route53 Primary를 CloudFront 도메인으로 변경</td>
+              <td class="verdict-reject"><span class="verdict-mark">기각</span></td>
+              <td>CloudFront의 ALB 오리진 도메인이 <code>api.team-train.cloud</code> 자기
+                자신이라, Primary를 CloudFront로 돌리면 순환 참조가 생김</td>
+            </tr>
+            <tr>
+              <td>HealthyHostCount → CloudWatch 알람 → Route53이 알람만 조회</td>
+              <td class="verdict-accept"><span class="verdict-mark">채택</span></td>
+              <td>네트워크 트래픽 없이 AWS 제어 영역 API로만 상태를 가져와서 SG
+                규칙과 완전히 무관하게 동작함</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3>종합 — 위 네 가지가 겹쳐서 만드는 3단 방어</h3>
+      <p>
+        prefix list(SG, 방어선 1)는 그대로 두고 대체하지 않았다 — 대신 커스텀 헤더
+        검증(방어선 2)과 ALB Regional WAF(방어선 3)를 그 위에 얹었다. 헬스체크는
+        이 SG 규칙과 무관하게 CloudWatch 알람을 거쳐 동작하도록 따로 설계했다.
+      </p>
+      <div class="diagram-panel">
+        <pre class="mermaid">
+%%{init: {'theme':'base', 'themeVariables': {
+  'primaryColor': '#f2e2c8',
+  'primaryTextColor': '#121820',
+  'primaryBorderColor': '#a8671f',
+  'lineColor': '#7c8790',
+  'fontFamily': 'SF Mono, Consolas, monospace',
+  'fontSize': '13px'
+}}}%%
+flowchart LR
+  CF["CloudFront + WAF\n(방어선 0)"] -- "X-Origin-Verify" --> LSN["ALB Listener\n(방어선 1: SG prefix list)"]
+  LSN -- 헤더 불일치 --> DENY["403"]
+  LSN -- 헤더 일치 --> RULE["Listener Rule\n(방어선 2)"]
+  RWAF["Regional WAF\n(방어선 3)"] -.-> LSN
+  RULE --> TG["Target Group"]
+  TG -. HealthyHostCount .-> ALARM["CloudWatch Alarm"]
+  ALARM -. 상태 조회 .-> HC["Route53 Health Check\nCLOUDWATCH_METRIC"]
+  HC --> R53["api.team-train.cloud"]
+  R53 -- Primary --> LSN
+  R53 -- Secondary --> AZ["Azure App Service"]
+        </pre>
+        <p class="diagram-caption">점선 = 상태 조회(네트워크 트래픽 아님) · 관련 파일은 위 네 항목 참고</p>
+      </div>
+    </section>
+
+    <section class="prose">
+      <p class="kicker">03 · modules/database/aurora_mysql.tf · modules/networking/iam.tf</p>
+      <h2>자격증명 관리 — Secrets Manager</h2>
+      <p>
+        DB 자격증명이 코드나 tfvars에 평문으로 남지 않도록, Aurora 생성 직후 Secrets
+        Manager에 <code>DB_USER/DB_PASSWORD/DB_HOST/DB_NAME</code>을 저장하고, 이걸
+        읽어갈 수 있는 IAM 정책을 <code>secret:team-train-db-*</code> 패턴으로 특정
+        시크릿에만 스코프했다 — 계정 내 다른 시크릿에는 접근 못 하게.
+      </p>
+      <p>
+        순환 참조 문제도 있었다 — Secrets Manager 리소스가 database 모듈과 networking
+        모듈 양쪽에서 필요해서, 시크릿 생성은 database 모듈에 두고 IAM 정책만
+        networking 모듈에서 관리하는 식으로 의존성 방향을 한 방향으로 정리했다.
+      </p>
+
+      <h3>IRSA — 노드가 아니라 파드 단위로 권한을 준다</h3>
+      <p>
+        위 IAM 정책은 노드의 EC2 Role이 아니라 IRSA(IAM Roles for Service Accounts)로
+        pod에 붙는다는 전제로 설계했다. EKS OIDC 프로바이더를 신뢰하는 Role의 조건절에
+        <code>system:serviceaccount:default:booking-sa</code>처럼 특정 K8s
+        ServiceAccount 하나만 명시하면, 그 파드만 이 정책을 쓸 수 있다. 노드 Role에
+        전부 묶어두면 같은 노드에 뜨는 다른 파드도 그 권한을 같이 쓸 수 있게 되는데,
+        IRSA는 그 문제를 파드 단위로 끊는다 — 시크릿 정책을 설계할 때 이 경계를
+        기준으로 삼았다.
+      </p>
+    </section>
+
+    <section class="prose">
+      <p class="kicker">04 · modules/networking/cloudtrail.tf · modules/infra/logging/athena.tf</p>
+      <h2>감사·탐지 — CloudTrail</h2>
+      <p>
+        전 리전 CloudTrail을 KMS 암호화된 S3에 저장하고 로그 무결성 검증을 켰다.
+        여기에 실시간 탐지 계층을 추가했다 — CloudWatch Logs로 이중 전송하고,
+        <b>루트 계정 사용 · IAM 정책 변경 · 보안그룹 변경 · CloudTrail 자체 조작</b>
+        네 가지를 Metric Filter + Alarm으로 감시한다. 그중 CloudTrail 자체 조작
+        (StopLogging/DeleteTrail)은 공격자가 흔적을 지울 때 제일 먼저 노리는
+        지점이라 따로 넣었다.
+      </p>
+      <p>
+        탐지뿐 아니라 사후 조회 쪽도 손봤다 — 로그 조회용 Glue Crawler는 제거했다.
+        CloudTrail 로그는 스키마가 고정돼있어 크롤러로 "추론"할 필요가 없다 — 대신
+        파티션 프로젝션 기반 Athena 테이블로 바꿔서, 크롤러 스케줄 실행이나
+        <code>MSCK REPAIR TABLE</code> 없이도 항상 최신 파티션이 조회되게 했다.
+      </p>
+    </section>
+
+    <section class="prose">
+      <p class="kicker">05 · modules/networking/vpn.tf · modules/azure-networking · modules/database/dms.tf</p>
+      <h2>멀티클라우드 DR — Azure Site-to-Site VPN</h2>
+      <p>
+        Aurora → Azure MySQL로의 DR 복제(DMS)가 공개 인터넷이 아니라 AWS↔Azure
+        사설 IPSec 터널을 타도록 VPN Gateway·Customer Gateway를 연동했다. DMS
+        보안그룹의 아웃바운드도 <code>0.0.0.0/0</code>이 아니라 Azure VNet CIDR로만
+        제한된다.
+      </p>
+      <p>
+        Azure VPN Gateway의 공개 IP는 Azure 쪽을 먼저 apply해야 알 수 있다는 순서
+        문제가 있어서, 2단계 apply로 설계했다 — 1단계는 IP 없이(리소스 count=0으로
+        대기) Azure 쪽만 먼저 만들고, 확보된 IP를 변수로 넣어 2단계에서 AWS VPN
+        리소스를 실제로 생성한다.
+      </p>
+      <p>
+        여기서 끝내지 않고 실제로 한 번 배포해서 확인했다 — Aurora에서 Azure MySQL로
+        복제가 붙는 것, 터널이 사설 구간에서 암호화된 채로 유지되는 것, 그리고 DR
+        전환 시나리오대로 Azure 쪽으로 넘어가는 것까지 직접 검증했다.
+      </p>
+    </section>
+
+    <section>
+      <p class="kicker">검증</p>
+      <h2>설계로 끝내지 않고 확인하는 절차</h2>
+      <p style="margin-bottom: 20px;">
+        DR 경로는 실제 배포로 검증했고(05번), 엣지 Failover 경로는 이번 세션에
+        새로 설계한 부분이라 런북만 만들어둔 상태다.
+      </p>
+      <div>
+        <div class="status-row">
+          <span class="status-dot done">완료</span>
+          <span class="status-label">Aurora → Azure MySQL 복제, 터널 암호화, DR 전환 — 실배포로 확인</span>
+        </div>
+        <div class="status-row">
+          <span class="status-dot done">완료</span>
+          <span class="status-label">Terraform <code>validate</code> — prod / dev / prod-k8s 전체 통과</span>
+        </div>
+        <div class="status-row">
+          <span class="status-dot done">완료</span>
+          <span class="status-label">엣지 방어 설계 결정 ADR 문서화</span>
+        </div>
+        <div class="status-row">
+          <span class="status-dot pending">대기</span>
+          <span class="status-label">파드 다운 → Target Group unhealthy → 알람 → Route53 Failover 전환 실측</span>
+          <span class="status-note">엣지 Failover는 이번 세션 신규 설계 — 인프라 재배포 후 실행 예정</span>
+        </div>
+      </div>
+    </section>
+
+  </div>
+</main>
+
+<div class="foot-band">
+  <div class="wrap evidence">
+    <h2>근거</h2>
+    <dl>
+      <dt>Fork</dt>
+      <dd><a href="https://github.com/hanqql/Train_repo" target="_blank" rel="noopener">github.com/hanqql/Train_repo</a></dd>
+      <dt>실제 이력</dt>
+      <dd><span class="mono">git log --author=hanqql</span> — 27 커밋 · 74개 파일, <code>modules/networking</code> 16개로 최다</dd>
+      <dt>Commit</dt>
+      <dd><a href="https://github.com/hanqql/Train_repo/commit/4d627e6" target="_blank" rel="noopener"><span class="mono">4d627e6</span></a> — 이번 세션의 엣지 방어 강화분</dd>
+      <dt>ADR</dt>
+      <dd><a href="https://github.com/hanqql/Train_repo/blob/main/docs/adr/0001-alb-origin-access-control.md" target="_blank" rel="noopener">docs/adr/0001-alb-origin-access-control.md</a></dd>
+      <dt>런북</dt>
+      <dd><a href="https://github.com/hanqql/Train_repo/blob/main/docs/runbooks/failover-test.md" target="_blank" rel="noopener">docs/runbooks/failover-test.md</a></dd>
+      <dt>원본</dt>
+      <dd><a href="https://github.com/hjin-2e/Train_repo" target="_blank" rel="noopener">github.com/hjin-2e/Train_repo</a> — 4인 팀 프로젝트</dd>
+    </dl>
+    <p class="foot-note">K8s 애드온·데이터베이스 스키마·애플리케이션 로깅/알람 파트는 팀원 담당이며 이 문서 범위에 포함하지 않았다.</p>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/mermaid@10.9.1/dist/mermaid.min.js"></script>
+<script>
+  mermaid.initialize({ startOnLoad: true, securityLevel: 'loose' });
+</script>
+</body>
+</html>
