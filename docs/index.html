@@ -525,7 +525,15 @@ flowchart LR
 
 <script src="https://cdn.jsdelivr.net/npm/mermaid@10.9.1/dist/mermaid.min.js"></script>
 <script>
-  mermaid.initialize({ startOnLoad: true, securityLevel: 'loose' });
+  // mermaid 다이어그램이 렌더링되면서 페이지 높이가 나중에 늘어나므로,
+  // 렌더링이 끝난 뒤에 다시 한 번 앵커(#해시)로 스크롤을 맞춰준다.
+  mermaid.initialize({ startOnLoad: false, securityLevel: 'loose' });
+  mermaid.run().finally(() => {
+    if (location.hash) {
+      const target = document.querySelector(location.hash);
+      if (target) target.scrollIntoView();
+    }
+  });
 </script>
 </body>
 </html>
