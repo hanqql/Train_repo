@@ -1,3 +1,13 @@
+> **Fork 안내** — 이 레포는 4인 팀 프로젝트([원본](https://github.com/hjin-2e/Train_repo))의 fork입니다.
+> `main` 브랜치의 [`4d627e6`](https://github.com/hanqql/Train_repo/commit/4d627e6) 커밋부터는
+> 팀 내 네트워크/보안 담당 개인 작업입니다 — Route53 Failover IaC화, CloudFront 커스텀 헤더 +
+> ALB 리스너 규칙 기반 오리진 검증, EKS 최소 권한 Access Entry, CloudTrail 보안 이벤트 실시간
+> 감시, Azure Site-to-Site VPN DR 연동. 설계 배경은 [`docs/adr/0001-alb-origin-access-control.md`](docs/adr/0001-alb-origin-access-control.md),
+> 검증 절차는 [`docs/runbooks/failover-test.md`](docs/runbooks/failover-test.md) 참고.
+> 전체를 한 번에 보려면 [케이스 스터디](https://claude.ai/code/artifact/f5603810-42e9-4489-bd20-cde1aedcf3eb) 참고.
+>
+> 그 외(K8s 애드온, DB, 로깅/알람 등)는 팀원들의 작업입니다.
+
 ## 🏗️ 1단계: AWS 뼈대 인프라 배포 (Terraform)
 가장 먼저 네트워크(VPC)와 쿠버네티스 클러스터(EKS), 그리고 데이터베이스(Aurora, Redis)를 AWS에 올립니다.
 
