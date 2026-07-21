@@ -161,7 +161,7 @@
 <main>
   <div class="wrap">
 
-    <section class="prose">
+    <section class="prose" id="overview">
       <p class="kicker">개요</p>
       <h2>요청이 인터넷에서 들어와 DB에 닿기까지 거치는 모든 경계</h2>
       <p class="lead">
@@ -208,7 +208,7 @@ flowchart TB
       </div>
     </section>
 
-    <section class="prose">
+    <section class="prose" id="s01">
       <p class="kicker">01 · modules/networking/main.tf, security_group.tf, bastion.tf, kms.tf</p>
       <h2>네트워크 경계 — VPC와 보안그룹</h2>
       <p>
@@ -243,7 +243,7 @@ flowchart TB
       </p>
     </section>
 
-    <section class="prose">
+    <section class="prose" id="s02">
       <p class="kicker">02 · modules/networking/{route53,acm,cloudfront,waf}.tf · modules/infra/{cdn,eks-cluster}/*</p>
       <h2>엣지 — Route53, CloudFront, ALB, WAF</h2>
       <p class="lead">
@@ -287,7 +287,7 @@ flowchart TB
       </p>
       <div class="files"><span>modules/networking/waf.tf</span><span>modules/infra/eks-cluster/waf.tf</span></div>
 
-      <h3>트러블슈팅 — Route53 Failover가 계속 실패했다</h3>
+      <h3 id="troubleshooting">트러블슈팅 — Route53 Failover가 계속 실패했다</h3>
       <p>
         <b>증상</b> — ALB는 정상인데 Route53 헬스체크가 항상 Failure로 떴다. Primary가
         멀쩡해도 Route53 입장에서는 죽은 것처럼 보이니 Failover가 오작동했다.
@@ -365,7 +365,7 @@ flowchart LR
       </div>
     </section>
 
-    <section class="prose">
+    <section class="prose" id="s03">
       <p class="kicker">03 · modules/database/aurora_mysql.tf · modules/networking/iam.tf</p>
       <h2>자격증명 관리 — Secrets Manager</h2>
       <p>
@@ -392,7 +392,7 @@ flowchart LR
       </p>
     </section>
 
-    <section class="prose">
+    <section class="prose" id="s04">
       <p class="kicker">04 · modules/networking/cloudtrail.tf · modules/infra/logging/athena.tf</p>
       <h2>감사·탐지 — CloudTrail</h2>
       <p>
@@ -411,7 +411,7 @@ flowchart LR
       </p>
     </section>
 
-    <section class="prose">
+    <section class="prose" id="s05">
       <p class="kicker">05 · modules/networking/vpn.tf · modules/azure-networking · modules/database/dms.tf</p>
       <h2>멀티클라우드 DR — Azure Site-to-Site VPN</h2>
       <p>
@@ -433,7 +433,7 @@ flowchart LR
       </p>
     </section>
 
-    <section>
+    <section id="verification">
       <p class="kicker">검증</p>
       <h2>설계로 끝내지 않고 확인하는 절차</h2>
       <p style="margin-bottom: 20px;">
