@@ -60,14 +60,12 @@ resource "aws_instance" "eks_bastion" {
   user_data = <<-EOF
     #!/bin/bash
     dnf update -y
-    # kubectl 1.30.0 설치
-    curl -LO "https://dl.k8s.io/release/v1.30.0/bin/linux/amd64/kubectl"
-    chmod +x ./kubectl
-    mv ./kubectl /usr/local/bin/
-    # helm 설치
-    curl -fsSL -o get_helm.sh https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3
-    chmod 700 get_helm.sh
-    ./get_helm.sh
+    # kubectl/helm: S3 Gateway 엔드포인트로 받아서 NAT Gateway가 필요 없다
+    # (bastion_tools.tf 참고 - 바이너리는 사전에 s3://${aws_s3_bucket.bastion_tools.bucket}/tools/ 에 업로드돼 있어야 함)
+    aws s3 cp s3://${aws_s3_bucket.bastion_tools.bucket}/tools/kubectl /usr/local/bin/kubectl
+    chmod +x /usr/local/bin/kubectl
+    aws s3 cp s3://${aws_s3_bucket.bastion_tools.bucket}/tools/helm /usr/local/bin/helm
+    chmod +x /usr/local/bin/helm
   EOF
 
   tags = {
@@ -88,14 +86,12 @@ resource "aws_instance" "eks_bastion_c" {
   user_data = <<-EOF
     #!/bin/bash
     dnf update -y
-    # kubectl 1.30.0 설치
-    curl -LO "https://dl.k8s.io/release/v1.30.0/bin/linux/amd64/kubectl"
-    chmod +x ./kubectl
-    mv ./kubectl /usr/local/bin/
-    # helm 설치
-    curl -fsSL -o get_helm.sh https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3
-    chmod 700 get_helm.sh
-    ./get_helm.sh
+    # kubectl/helm: S3 Gateway 엔드포인트로 받아서 NAT Gateway가 필요 없다
+    # (bastion_tools.tf 참고 - 바이너리는 사전에 s3://${aws_s3_bucket.bastion_tools.bucket}/tools/ 에 업로드돼 있어야 함)
+    aws s3 cp s3://${aws_s3_bucket.bastion_tools.bucket}/tools/kubectl /usr/local/bin/kubectl
+    chmod +x /usr/local/bin/kubectl
+    aws s3 cp s3://${aws_s3_bucket.bastion_tools.bucket}/tools/helm /usr/local/bin/helm
+    chmod +x /usr/local/bin/helm
   EOF
 
   tags = {
