@@ -4,7 +4,8 @@
 > ALB 리스너 규칙 기반 오리진 검증, EKS 최소 권한 Access Entry, CloudTrail 보안 이벤트 실시간
 > 감시, Azure Site-to-Site VPN DR 연동. 설계 배경은 [`docs/adr/0001-alb-origin-access-control.md`](docs/adr/0001-alb-origin-access-control.md),
 > 검증 절차는 [`docs/runbooks/failover-test.md`](docs/runbooks/failover-test.md) 참고.
-> 전체를 한 번에 보려면 [케이스 스터디](https://claude.ai/code/artifact/f5603810-42e9-4489-bd20-cde1aedcf3eb) 참고.
+> 전체를 한 번에 보려면 [케이스 스터디](https://hanqql.github.io/Train_repo/) 참고
+> (Settings → Pages에서 `main` 브랜치 `/docs` 소스로 활성화 필요, 소스: [`docs/index.html`](docs/index.html)).
 >
 > 그 외(K8s 애드온, DB, 로깅/알람 등)는 팀원들의 작업입니다.
 
