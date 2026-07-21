@@ -43,7 +43,7 @@
     font-family: var(--serif); font-size: 17px; line-height: 1.68;
     -webkit-font-smoothing: antialiased;
   }
-  a { color: var(--accent); text-decoration-thickness: 1px; text-underline-offset: 3px; }
+  a { color: var(--accent); font-weight: 600; text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 3px; } a:hover { text-decoration-thickness: 2px; }
   a:focus-visible, button:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
 
   .wrap { max-width: 780px; margin: 0 auto; padding: 0 28px; }
@@ -285,6 +285,14 @@ flowchart TB
         CloudFront 경유 트래픽만 보기 때문에, 커스텀 헤더 검증까지 뚫리는 경우를
         대비해 ALB 쪽에도 별도로 필요했다.
       </p>
+      <p>
+        여기서 걸린 게 하나 있었다 — CloudFront에 연동하는 WAF는 AWS 정책상 무조건
+        <code>us-east-1</code> 리전에 만들어야 한다. 나머지 리소스는 전부
+        <code>ap-northeast-2</code>인데 이 하나만 리전이 다른 거다. Terraform
+        provider alias(<code>aws.us_east_1</code>)로 이 리소스만 다른 리전에
+        만들도록 분리해서, 나머지 코드는 리전을 그대로 두고 WAF·ACM(CloudFront용)만
+        따로 지정했다.
+      </p>
       <div class="files"><span>modules/networking/waf.tf</span><span>modules/infra/eks-cluster/waf.tf</span></div>
 
       <h3 id="troubleshooting">트러블슈팅 — Route53 Failover가 계속 실패했다</h3>
@@ -433,6 +441,34 @@ flowchart LR
         전환 시나리오대로 Azure 쪽으로 넘어가는 것까지 직접 검증했다.
       </p>
       <p><a href="blog-azure-vpn-dr.html">→ 딥다이브: AWS와 Azure가 서로의 IP를 몰라야 배포가 안 되는 상황 — 2단계 apply로 푼 순환 참조</a></p>
+    </section>
+
+    <section class="prose" id="collab">
+      <p class="kicker">협업</p>
+      <h2>다른 파트와 맞물리는 지점</h2>
+      <p>
+        네트워크·보안은 혼자 완결되는 영역이 아니다. 다른 팀원 파트와 맞닿는
+        지점 두 곳은 인터페이스를 맞추는 방식으로 풀었다.
+      </p>
+
+      <h3>IRSA ServiceAccount 이름 — 앱 팀과의 계약</h3>
+      <p>
+        Secrets Manager IAM 정책을 IRSA로 설계할 때, 신뢰 조건절에 특정 K8s
+        ServiceAccount 이름(<code>system:serviceaccount:default:booking-sa</code>)을
+        박아넣어야 한다. 이 이름은 앱 파트가 실제로 만드는 ServiceAccount 이름과
+        정확히 일치해야만 동작한다 — 코드로 된 일종의 계약이라, 이름이 먼저
+        정해지고 나서야 양쪽 다 구현이 가능했다.
+      </p>
+
+      <h3>배포 순서 의존성 — Route53 존과 가비아 네임서버</h3>
+      <p>
+        도메인 존은 <code>domain/</code> 스택에서 한 번만 만들고, 가비아에 네임서버를
+        등록한 뒤에야 나머지 인프라(<code>networking/</code>)가 그 존을 참조할 수
+        있다. 이 순서를 지키지 않으면 ACM 인증서 DNS 검증부터 막힌다. 팀 전체가
+        같은 존을 같이 쓰는 구조라, 이 순서를 코드 주석(<code>배포 순서: domain/ →
+        Gabia NS 업데이트 → networking/</code>)으로 명시해서 누가 언제 무엇을
+        배포해도 되는지 헷갈리지 않게 해뒀다.
+      </p>
     </section>
 
     <section id="verification">
