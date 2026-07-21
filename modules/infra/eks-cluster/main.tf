@@ -49,14 +49,17 @@ module "eks-cluster" {
         }
       }
     },
+    # Bastion은 "긴급 kubectl 대응"용이지 클러스터 관리(RBAC/Access Entry 변경) 용도가
+    # 아니라서, ClusterAdmin이 아니라 워크로드 조작까지만 되는 EditPolicy로 제한한다.
+    # SSM 세션 하나가 뚫려도 클러스터 전체를 통제할 수는 없게 하기 위함.
     var.enable_bastion_access ? {
       bastion_access = {
         kubernetes_groups = []
         principal_arn     = var.eks_bastion_role_arn
 
         policy_associations = {
-          admin_policy = {
-            policy_arn = "arn:aws:eks::aws:cluster-access-policy/AmazonEKSClusterAdminPolicy"
+          edit_policy = {
+            policy_arn = "arn:aws:eks::aws:cluster-access-policy/AmazonEKSEditPolicy"
             access_scope = {
               type = "cluster"
             }

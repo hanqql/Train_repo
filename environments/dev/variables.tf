@@ -18,9 +18,10 @@ variable "environment" {
 }
 
 variable "developer_ips" {
-  description = "Allowed public IP list for EKS cluster API access"
+  # 기본값을 0.0.0.0/0으로 두면 tfvars 없이 apply할 때 EKS API 서버가 인터넷에 그대로
+  # 노출된다. 기본값을 없애 실제 개발자 IP를 명시적으로 넣도록 강제한다.
+  description = "EKS 클러스터 API 공개 엔드포인트 접근을 허용할 IP CIDR 목록 (예: [\"1.2.3.4/32\"]) - tfvars로 반드시 지정"
   type        = list(string)
-  default     = ["0.0.0.0/0"]
 }
 
 # Redis AUTH 토큰 (16자 이상 필수)
